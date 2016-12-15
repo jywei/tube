@@ -8,15 +8,32 @@ class Tuby
   def start
     loop do
       socket = @server.accept
+      connection = Connection.new(socket)
+      connection.process
+    end
+  end
 
-      data = socket.readpartial(1024)
+  class Connection
+    def initialize(socket)
+      @socket = socket
+    end
+
+    def process
+      data = @socket.readpartial(1024)
       puts data
+      send_response
+    end
 
-      socket.write "HTTP/ 1.1 200 OK\r\n"
-      socket.write "\r\n"
-      socket.write "hello\n"
+    def send_response
+      @socket.write "HTTP/ 1.1 200 OK\r\n"
+      @socket.write "\r\n"
+      @socket.write "hello\n"
 
-      socket.close
+      close
+    end
+
+    def close
+      @socket.close
     end
   end
 end
