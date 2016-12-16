@@ -47,12 +47,24 @@ class Tuby
       send_response env
     end
 
+    REASONS = {
+      200 => "OK",
+      404 => "Not Found"
+    }
+
     def send_response(env)
       status, headers, body = @app.call(env)
+      reason = REASONS[status]
 
-      @socket.write "HTTP/ 1.1 200 OK\r\n"
+      @socket.write "HTTP/1.1 #{status} #{reason}\r\n"
+      headers.each_pair do |name, value|
+        @socket.write "#{name}: #{value}\r\n"
+      end
       @socket.write "\r\n"
-      @socket.write "hello\n"
+      body.each do |chunk|
+        @socket.write chunk
+      end
+      body.close if body.respond_to? :close
 
       close
     end
@@ -61,18 +73,20 @@ class Tuby
       @socket.close
     end
   end
-end
 
-class App
-  def call(env) # env => request info Hash
-    sleep 5 if env["PATH_INFO"] == "/sleep"
+  class Builder
+    attr_reader :app
 
-    message = "Hello from the #{Process.pid}.\n"
-    [
-      200, # status code
-      { 'Content-Type' => 'text/plain', 'Content-Length' => message.size.to_s }, # header
-      [message] # body
-    ]
+    def run(app)
+      @app = app
+    end
+
+    def self.parse_file(file)
+      content = File.read(file)
+      builder = Builder.new
+      builder.instance_eval(content)
+      builder.app
+    end
   end
 end
 
@@ -111,7 +125,8 @@ end
 #   <h1>kthxbaie</h1>
 # </html>
 
-app = App.new
+app = Tuby::Builder.parse_file("config.ru")
+
 server = Tuby.new(3005, app)
 puts "Plugging Tuby into port 3005"
 server.start
