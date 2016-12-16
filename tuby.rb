@@ -2,6 +2,7 @@ require "socket"
 require "http/parser"
 require "stringio"
 require "thread"
+require "eventmachine"
 
 class Tuby
   def initialize(port, app)
@@ -16,15 +17,23 @@ class Tuby
         start
       end
     end
-    Process.waitall #wait all child processes to accept, then exercute (in case of zombie processes)
+    Process.waitall # wait all child processes to accept, then exercute (in case of zombie processes)
   end
 
   def start
     loop do
       socket = @server.accept
-      Thread.new do
+      Thread.new do # more memory consuming
         connection = Connection.new(socket, @app)
         connection.process
+      end
+    end
+  end
+
+  def start_em
+    EM.run do
+      EM.start_server "localhost", 3005, EMConnection do |connection|
+        connection.app = @app
       end
     end
   end
@@ -87,6 +96,57 @@ class Tuby
     end
   end
 
+  class EMConnection < EM::Connection
+    attr_accessor :app
+
+    def post_init
+      @parser = Http::Parser.new(self)
+    end
+
+    def receive_data(data)
+      @parser << data
+    end
+
+    def on_message_complete
+      puts "#{@parser.http_method} #{@parser.request_path}"
+      puts " " + @parser.headers.inspect
+
+      env = {}
+      @parser.headers.each_pair do |name, value|
+        # User-Agent => HTTP_USER_AGENT
+        name = "HTTP_" + name.upcase.tr("-", "_")
+        env[name] = value
+      end
+      env["PATH_INFO"] = @parser.request_path
+      env["REQUEST_METHOD"] = @parser.http_method
+      env["rack.input"] = StringIO.new
+
+      send_response env
+    end
+
+    REASONS = {
+      200 => "OK",
+      404 => "Not Found"
+    }
+
+    def send_response(env)
+      status, headers, body = @app.call(env)
+      reason = REASONS[status]
+
+      send_data "HTTP/1.1 #{status} #{reason}\r\n"
+      headers.each_pair do |name, value|
+        send_data "#{name}: #{value}\r\n"
+      end
+      send_data "\r\n"
+      body.each do |chunk|
+        send_data chunk
+      end
+      body.close if body.respond_to? :close
+
+      close_connection_after_writing
+    end
+  end
+
   class Builder
     attr_reader :app
 
@@ -142,4 +202,6 @@ app = Tuby::Builder.parse_file("config.ru")
 
 server = Tuby.new(3005, app)
 puts "Plugging Tuby into port 3005"
-server.prefork 3
+# server.start
+# server.prefork 3 #prefork threaded server
+server.start_em
