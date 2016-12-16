@@ -13,8 +13,10 @@ class Tuby
     workers.times do
       fork do
         puts "Forked #{Process.pid}"
+        start
       end
     end
+    Process.waitall #wait all child processes to accept, then exercute (in case of zombie processes)
   end
 
   def start
@@ -140,4 +142,4 @@ app = Tuby::Builder.parse_file("config.ru")
 
 server = Tuby.new(3005, app)
 puts "Plugging Tuby into port 3005"
-server.start
+server.prefork 3
