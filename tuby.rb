@@ -1,6 +1,7 @@
 require "socket"
 require "http/parser"
 require "stringio"
+require "thread"
 
 class Tuby
   def initialize(port, app)
@@ -8,11 +9,21 @@ class Tuby
     @app = app
   end
 
+  def prefork(workers)
+    workers.times do
+      fork do
+        puts "Forked #{Process.pid}"
+      end
+    end
+  end
+
   def start
     loop do
       socket = @server.accept
-      connection = Connection.new(socket, @app)
-      connection.process
+      Thread.new do
+        connection = Connection.new(socket, @app)
+        connection.process
+      end
     end
   end
 
