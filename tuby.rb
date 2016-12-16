@@ -1,4 +1,5 @@
 require "socket"
+require "http/parser"
 
 class Tuby
   def initialize(port)
@@ -16,11 +17,21 @@ class Tuby
   class Connection
     def initialize(socket)
       @socket = socket
+      @parser = Http::Parser.new(self)
     end
 
     def process
-      data = @socket.readpartial(1024)
-      puts data
+      until @socket.closed? || @socket.eof?
+        data = @socket.readpartial(1024)
+        @parser << data
+      end
+    end
+
+    def on_message_complete
+      puts "#{@parser.http_method} #{@parser.request_path}"
+      puts " " + @parser.headers.inspect
+      puts 
+
       send_response
     end
 

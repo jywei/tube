@@ -14,7 +14,7 @@ class ParserDemo
     @parser << "GET / HTTP/1.1\r\n"
     @parser << "Host: localhost:3000\r\n"
     @parser << "Accept: */*\r\n"
-    @parser << "\r\n"    
+    @parser << "\r\n"
   end
 end
 
